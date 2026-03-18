@@ -1,0 +1,9 @@
+# TLS 1.3 cipher suites for HAProxy
+#
+# Referenced by haproxy-tls12-fallback.cfg via:
+#   ciphersuites @/etc/haproxy/tls13-ciphersuites.txt
+#
+# TLS 1.3 suites are fixed by the spec; all are AEAD with forward secrecy.
+# Listed in preferred order: AES-128-GCM first (widely accelerated in hardware),
+# then ChaCha20 (preferred on mobile/ARM without AES hardware), then AES-256-GCM.
+TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384

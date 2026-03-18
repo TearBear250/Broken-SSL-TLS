@@ -1,0 +1,8 @@
+# TLS 1.2 cipher list for HAProxy (ECDHE + AEAD only)
+#
+# Referenced by haproxy-tls12-fallback.cfg via:
+#   ciphers @/etc/haproxy/tls12-ciphers.txt
+#
+# Only ECDHE key exchange (forward secrecy) and AEAD modes are permitted.
+# No RSA key exchange, no CBC mode, no 3DES, no RC4, no EXPORT, no NULL.
+ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384

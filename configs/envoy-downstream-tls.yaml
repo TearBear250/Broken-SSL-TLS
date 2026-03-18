@@ -1,0 +1,114 @@
+# Envoy — Hardened TLS 1.2 Fallback (DownstreamTlsContext)
+#
+# Purpose:  Prefer TLS 1.3; allow a locked-down TLS 1.2 fallback.
+# Requires: Envoy 1.14+ (for TLSv1_3 support in tls_params).
+#           This uses the v3 API (envoy.extensions.transport_sockets.tls.v3).
+#
+# Usage: embed this transport_socket block in your listener definition,
+# replacing the transport_socket section in your existing Envoy config.
+# Adjust certificate/key paths to match your deployment.
+
+static_resources:
+  listeners:
+  - name: listener_https
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 443
+
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_https
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: app
+              domains: ["*"]
+              routes:
+              - match: { prefix: "/" }
+                route: { cluster: app_backend }
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+      # -----------------------------------------------------------------
+      # TLS configuration
+      # -----------------------------------------------------------------
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          common_tls_context:
+
+            # --- Protocol version range ----------------------------------
+            tls_params:
+              tls_minimum_protocol_version: TLSv1_2
+              tls_maximum_protocol_version: TLSv1_3
+
+              # --- Key exchange curves / groups --------------------------
+              # X25519 preferred (modern, fast, constant-time).
+              # P-256 (secp256r1) is a well-supported NIST fallback.
+              ecdh_curves:
+              - X25519
+              - P-256
+
+              # --- TLS 1.2 cipher suites (ECDHE + AEAD only) ------------
+              # Envoy / BoringSSL uses OpenSSL-style cipher names here.
+              # No RSA key exchange, no CBC, no 3DES, no RC4, no EXPORT.
+              # TLS 1.3 suites are negotiated automatically and are not
+              # listed here (BoringSSL/Envoy always enables them when
+              # TLSv1_3 is in the version range).
+              cipher_suites:
+              - ECDHE-ECDSA-AES128-GCM-SHA256
+              - ECDHE-RSA-AES128-GCM-SHA256
+              - ECDHE-ECDSA-CHACHA20-POLY1305
+              - ECDHE-RSA-CHACHA20-POLY1305
+              - ECDHE-ECDSA-AES256-GCM-SHA384
+              - ECDHE-RSA-AES256-GCM-SHA384
+
+            # --- Certificate and key (file-based) ------------------------
+            # Replace with your actual certificate chain and private key.
+            tls_certificates:
+            - certificate_chain:
+                filename: "/etc/envoy/tls/fullchain.pem"
+              private_key:
+                filename: "/etc/envoy/tls/privkey.pem"
+
+  clusters:
+  - name: app_backend
+    connect_timeout: 5s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: app_backend
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 127.0.0.1
+                port_value: 8080
+
+# ---------------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------------
+# tls_minimum_protocol_version: TLSv1_2
+#   Rejects SSLv3, TLS 1.0, and TLS 1.1 connections.
+#
+# tls_maximum_protocol_version: TLSv1_3
+#   Allows TLS 1.3 (preferred) and TLS 1.2 (fallback) only.
+#
+# cipher_suites
+#   These apply only to TLS 1.2.  TLS 1.3 suites in BoringSSL/Envoy are
+#   fixed (TLS_AES_128_GCM_SHA256, TLS_CHACHA20_POLY1305_SHA256,
+#   TLS_AES_256_GCM_SHA384) and are always enabled when TLS 1.3 is active.
+#
+# Session tickets
+#   Envoy does not expose a direct session-ticket toggle in the YAML API.
+#   Session resumption behaviour depends on the BoringSSL version bundled
+#   with your Envoy build.  For the strongest forward-secrecy posture,
+#   prefer TLS 1.3 connections (which use ephemeral keys for PSK resumption).
